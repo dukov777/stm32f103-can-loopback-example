@@ -39,11 +39,19 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
- CAN_HandleTypeDef hcan;
 
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+uint8_t ubKeyNumber = 0x0;
+CAN_HandleTypeDef     CanHandle;
+CAN_TxHeaderTypeDef   TxHeader;
+CAN_RxHeaderTypeDef   RxHeader;
+uint8_t               TxData[8];
+uint8_t               RxData[8];
+uint32_t              TxMailbox;
+
+CAN_FilterTypeDef  sFilterConfig;
 
 /* USER CODE END PV */
 
@@ -91,6 +99,7 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_CAN_Init();
+
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -102,6 +111,26 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+      uint32_t RxFifo = 0;
+      uint32_t fillLevel = HAL_CAN_GetRxFifoFillLevel(&CanHandle, RxFifo);
+
+      if(fillLevel == 0 ){
+          /* Set the data to be transmitted */
+          int pendingRequests = HAL_CAN_IsTxMessagePending(&CanHandle, TxMailbox);
+          if(pendingRequests == 0) {
+              TxData[0] = ubKeyNumber;
+              TxData[1] = 0xAD;
+              if (HAL_CAN_AddTxMessage(&CanHandle, &TxHeader, TxData, &TxMailbox) != HAL_OK)
+              {
+                /* Transmission request Error */
+                Error_Handler();
+              }
+          }
+//          HAL_Delay(10);
+      } else {
+          HAL_CAN_GetRxMessage(&CanHandle, RxFifo, &RxHeader, RxData);
+      }
+
   }
   /* USER CODE END 3 */
 }
@@ -159,23 +188,63 @@ static void MX_CAN_Init(void)
   /* USER CODE BEGIN CAN_Init 1 */
 
   /* USER CODE END CAN_Init 1 */
-  hcan.Instance = CAN1;
-  hcan.Init.Prescaler = 7;
-  hcan.Init.Mode = CAN_MODE_SILENT_LOOPBACK;
-  hcan.Init.SyncJumpWidth = CAN_SJW_1TQ;
-  hcan.Init.TimeSeg1 = CAN_BS1_4TQ;
-  hcan.Init.TimeSeg2 = CAN_BS2_4TQ;
-  hcan.Init.TimeTriggeredMode = DISABLE;
-  hcan.Init.AutoBusOff = DISABLE;
-  hcan.Init.AutoWakeUp = DISABLE;
-  hcan.Init.AutoRetransmission = DISABLE;
-  hcan.Init.ReceiveFifoLocked = DISABLE;
-  hcan.Init.TransmitFifoPriority = DISABLE;
-  if (HAL_CAN_Init(&hcan) != HAL_OK)
+  CanHandle.Instance = CAN1;
+  CanHandle.Init.Prescaler = 7;
+  CanHandle.Init.Mode = CAN_MODE_SILENT_LOOPBACK;
+  CanHandle.Init.SyncJumpWidth = CAN_SJW_1TQ;
+  CanHandle.Init.TimeSeg1 = CAN_BS1_4TQ;
+  CanHandle.Init.TimeSeg2 = CAN_BS2_4TQ;
+  CanHandle.Init.TimeTriggeredMode = DISABLE;
+  CanHandle.Init.AutoBusOff = DISABLE;
+  CanHandle.Init.AutoWakeUp = DISABLE;
+  CanHandle.Init.AutoRetransmission = DISABLE;
+  CanHandle.Init.ReceiveFifoLocked = DISABLE;
+  CanHandle.Init.TransmitFifoPriority = DISABLE;
+  if (HAL_CAN_Init(&CanHandle) != HAL_OK)
   {
     Error_Handler();
   }
+
   /* USER CODE BEGIN CAN_Init 2 */
+  /*##-2- Configure the CAN Filter ###########################################*/
+  sFilterConfig.FilterBank = 0;
+  sFilterConfig.FilterMode = CAN_FILTERMODE_IDMASK;
+  sFilterConfig.FilterScale = CAN_FILTERSCALE_32BIT;
+  sFilterConfig.FilterIdHigh = 0x0000;
+  sFilterConfig.FilterIdLow = 0x0000;
+  sFilterConfig.FilterMaskIdHigh = 0x0000;
+  sFilterConfig.FilterMaskIdLow = 0x0000;
+  sFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO0;
+  sFilterConfig.FilterActivation = ENABLE;
+  sFilterConfig.SlaveStartFilterBank = 14;
+
+  if (HAL_CAN_ConfigFilter(&CanHandle, &sFilterConfig) != HAL_OK)
+  {
+    /* Filter configuration Error */
+    Error_Handler();
+  }
+
+  /*##-3- Start the CAN peripheral ###########################################*/
+  if (HAL_CAN_Start(&CanHandle) != HAL_OK)
+  {
+    /* Start Error */
+    Error_Handler();
+  }
+
+  /*##-4- Activate CAN RX notification #######################################*/
+  if (HAL_CAN_ActivateNotification(&CanHandle, CAN_IT_RX_FIFO0_MSG_PENDING) != HAL_OK)
+  {
+    /* Notification Error */
+    Error_Handler();
+  }
+
+  /*##-5- Configure Transmission process #####################################*/
+  TxHeader.StdId = 0x321;
+  TxHeader.ExtId = 0x01;
+  TxHeader.RTR = CAN_RTR_DATA;
+  TxHeader.IDE = CAN_ID_STD;
+  TxHeader.DLC = 2;
+  TxHeader.TransmitGlobalTime = DISABLE;
 
   /* USER CODE END CAN_Init 2 */
 
