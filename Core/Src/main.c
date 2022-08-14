@@ -177,12 +177,24 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_CAN_Init();
+
   /* USER CODE BEGIN 2 */
+  /* Set the data to be transmitted */
+  int pendingRequests = HAL_CAN_IsTxMessagePending(&hcan, TxMailbox);
+  if (pendingRequests == 0) {
+      TxData[0] = ubKeyNumber;
+      TxData[1] = 0xAD;
+      if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
+          /* Transmission request Error */
+          Error_Handler();
+      }
+  }
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+	uint32_t receive_index = 0;
     while (1) {
     /* USER CODE END WHILE */
 
@@ -197,19 +209,7 @@ int main(void)
 
         uint32_t RxFifo = 0;
         uint32_t fillLevel = HAL_CAN_GetRxFifoFillLevel(&hcan, RxFifo);
-
-        if (fillLevel == 0) {
-            /* Set the data to be transmitted */
-            int pendingRequests = HAL_CAN_IsTxMessagePending(&hcan, TxMailbox);
-            if (pendingRequests == 0) {
-                TxData[0] = ubKeyNumber;
-                TxData[1] = 0xAD;
-                if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
-                    /* Transmission request Error */
-                    Error_Handler();
-                }
-            }
-        } else {
+        if (fillLevel > 0) {
             HAL_CAN_GetRxMessage(&hcan, RxFifo, &RxHeader, RxData);
             if(RxHeader.IDE == CAN_ID_STD){
                 println("RX: StdId=%x; DLC=%d", RxHeader.StdId, RxHeader.DLC);
@@ -217,6 +217,19 @@ int main(void)
                 println("RX: ExtId=%x; DLC=%d", RxHeader.ExtId, RxHeader.DLC);
             }
             println("RX: %x%x%x%x%x%x%x%x", RxData[0], RxData[1], RxData[2], RxData[3], RxData[4], RxData[5], RxData[6], RxData[7]);
+
+            int pendingRequests = HAL_CAN_IsTxMessagePending(&hcan, TxMailbox);
+            if (pendingRequests == 0) {
+            	TxHeader.DLC = RxHeader.DLC;
+            	TxHeader.ExtId = RxHeader.ExtId;
+            	TxHeader.StdId = RxHeader.StdId;
+            	TxHeader.IDE = RxHeader.IDE;
+            	RxData[0] = receive_index++;
+            	if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, RxData, &TxMailbox) != HAL_OK) {
+                    /* Transmission request Error */
+                    Error_Handler();
+                }
+            }
         }
         HAL_Delay(500);
 
