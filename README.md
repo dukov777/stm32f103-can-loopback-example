@@ -1,7 +1,9 @@
 # stm32f103-can-loopback-example
 This code has been tested via SocketCan on Linux.
-Once PCAN interface is attached check the if *can0* is shown in network devices.
-ip a
+Once PCAN interface is attached check the if ***can0*** is shown in network devices.
+
+`ip a`
+
 then check the `can0` status
 
 `ip -details -statistics link show can0`
