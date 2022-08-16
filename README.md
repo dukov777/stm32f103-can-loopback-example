@@ -11,6 +11,7 @@ Restart interface if needed:
 `sudo ip link set can0 type can restart-ms 100`
 
 Before do any actions on SocketCan ensure that CAN interface is set to appropriate bit rate
+
 `sudo ip link set can0 up type can bitrate 125000`
 
 Monitor CAN messages. Shows input and output
