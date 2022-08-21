@@ -254,16 +254,6 @@ int main(void)
   MX_USART2_UART_Init();
   MX_CAN_Init();
   /* USER CODE BEGIN 2 */
-  /* Set the data to be transmitted */
-  int pendingRequests = HAL_CAN_IsTxMessagePending(&hcan, TxMailbox);
-  if (pendingRequests == 0) {
-      TxData[0] = ubKeyNumber;
-      TxData[1] = 0xAD;
-      if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
-          /* Transmission request Error */
-          Error_Handler();
-      }
-  }
 
   /* USER CODE END 2 */
 
