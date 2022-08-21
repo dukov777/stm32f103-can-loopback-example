@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "cmsis_os.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -29,6 +30,8 @@
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
+typedef StaticTask_t osStaticThreadDef_t;
+typedef StaticTimer_t osStaticTimerDef_t;
 /* USER CODE BEGIN PTD */
 
 /* USER CODE END PTD */
@@ -47,6 +50,45 @@ CAN_HandleTypeDef hcan;
 
 UART_HandleTypeDef huart2;
 
+/* Definitions for defaultTask */
+osThreadId_t defaultTaskHandle;
+const osThreadAttr_t defaultTask_attributes = {
+  .name = "defaultTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+/* Definitions for HeartBeatTask */
+osThreadId_t HeartBeatTaskHandle;
+uint32_t HeartBeatTaskBuffer[ 128 ];
+osStaticThreadDef_t HeartBeatTaskControlBlock;
+const osThreadAttr_t HeartBeatTask_attributes = {
+  .name = "HeartBeatTask",
+  .cb_mem = &HeartBeatTaskControlBlock,
+  .cb_size = sizeof(HeartBeatTaskControlBlock),
+  .stack_mem = &HeartBeatTaskBuffer[0],
+  .stack_size = sizeof(HeartBeatTaskBuffer),
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for CANReceiveTask */
+osThreadId_t CANReceiveTaskHandle;
+uint32_t CANReceiveTaskBuffer[ 256 ];
+osStaticThreadDef_t CANReceiveTaskControlBlock;
+const osThreadAttr_t CANReceiveTask_attributes = {
+  .name = "CANReceiveTask",
+  .cb_mem = &CANReceiveTaskControlBlock,
+  .cb_size = sizeof(CANReceiveTaskControlBlock),
+  .stack_mem = &CANReceiveTaskBuffer[0],
+  .stack_size = sizeof(CANReceiveTaskBuffer),
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for myTimer01 */
+osTimerId_t myTimer01Handle;
+osStaticTimerDef_t myTimer01ControlBlock;
+const osTimerAttr_t myTimer01_attributes = {
+  .name = "myTimer01",
+  .cb_mem = &myTimer01ControlBlock,
+  .cb_size = sizeof(myTimer01ControlBlock),
+};
 /* USER CODE BEGIN PV */
 uint8_t ubKeyNumber = 0x0;
 CAN_TxHeaderTypeDef TxHeader;
@@ -67,6 +109,11 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_CAN_Init(void);
+void StartDefaultTask(void *argument);
+void _HeartBeatTask(void *argument);
+void _CANReceiveTask(void *argument);
+void Callback01(void *argument);
+
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -206,7 +253,6 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_CAN_Init();
-
   /* USER CODE BEGIN 2 */
   /* Set the data to be transmitted */
   int pendingRequests = HAL_CAN_IsTxMessagePending(&hcan, TxMailbox);
@@ -221,53 +267,54 @@ int main(void)
 
   /* USER CODE END 2 */
 
+  /* Init scheduler */
+  osKernelInitialize();
+
+  /* USER CODE BEGIN RTOS_MUTEX */
+  /* add mutexes, ... */
+  /* USER CODE END RTOS_MUTEX */
+
+  /* USER CODE BEGIN RTOS_SEMAPHORES */
+  /* add semaphores, ... */
+  /* USER CODE END RTOS_SEMAPHORES */
+
+  /* Create the timer(s) */
+  /* creation of myTimer01 */
+  myTimer01Handle = osTimerNew(Callback01, osTimerPeriodic, NULL, &myTimer01_attributes);
+
+  /* USER CODE BEGIN RTOS_TIMERS */
+  /* start timers, add new ones, ... */
+  /* USER CODE END RTOS_TIMERS */
+
+  /* USER CODE BEGIN RTOS_QUEUES */
+  /* add queues, ... */
+  /* USER CODE END RTOS_QUEUES */
+
+  /* Create the thread(s) */
+  /* creation of defaultTask */
+  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+
+  /* creation of HeartBeatTask */
+  HeartBeatTaskHandle = osThreadNew(_HeartBeatTask, NULL, &HeartBeatTask_attributes);
+
+  /* creation of CANReceiveTask */
+  CANReceiveTaskHandle = osThreadNew(_CANReceiveTask, NULL, &CANReceiveTask_attributes);
+
+  /* USER CODE BEGIN RTOS_THREADS */
+  /* add threads, ... */
+  /* USER CODE END RTOS_THREADS */
+
+  /* USER CODE BEGIN RTOS_EVENTS */
+  /* add events, ... */
+  /* USER CODE END RTOS_EVENTS */
+
+  /* Start scheduler */
+  osKernelStart();
+
+  /* We should never get here as control is now taken by the scheduler */
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-	uint32_t receive_index = 0;
-    while (1) {
-    /* USER CODE END WHILE */
 
-    /* USER CODE BEGIN 3 */
-    	uint32_t error = HAL_CAN_GetError(&hcan);
-    	if(error != HAL_CAN_ERROR_NONE) {
-    		for(int i = 0; i < CAN_ERROR_MSG_MAPPING_LEN; i++){
-    			if(error & can_error_msg_mapping[i].error_id) {
-    				print("CAN Error is: ");
-    				println("%s", can_error_msg_mapping[i].human_readable_msg);
-    			}
-    		}
-//    		char binary_string[34];
-//    		itoa(error, binary_string, 2);
-//    		println("CAN Error is: %s", binary_string);
-    	}
-
-        uint32_t RxFifo = 0;
-        uint32_t fillLevel = HAL_CAN_GetRxFifoFillLevel(&hcan, RxFifo);
-        if (fillLevel > 0) {
-            HAL_CAN_GetRxMessage(&hcan, RxFifo, &RxHeader, RxData);
-            if(RxHeader.IDE == CAN_ID_STD){
-                println("RX: StdId=%x; DLC=%d", RxHeader.StdId, RxHeader.DLC);
-            }else{
-                println("RX: ExtId=%x; DLC=%d", RxHeader.ExtId, RxHeader.DLC);
-            }
-            println("RX: %x%x%x%x%x%x%x%x", RxData[0], RxData[1], RxData[2], RxData[3], RxData[4], RxData[5], RxData[6], RxData[7]);
-
-            int pendingRequests = HAL_CAN_IsTxMessagePending(&hcan, TxMailbox);
-            if (pendingRequests == 0) {
-            	TxHeader.DLC = RxHeader.DLC;
-            	TxHeader.ExtId = RxHeader.ExtId;
-            	TxHeader.StdId = RxHeader.StdId;
-            	TxHeader.IDE = RxHeader.IDE;
-            	RxData[0] = receive_index++;
-            	if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, RxData, &TxMailbox) != HAL_OK) {
-                    /* Transmission request Error */
-                    Error_Handler();
-                }
-            }
-        }
-        HAL_Delay(800);
-
-    }
   /* USER CODE END 3 */
 }
 
@@ -386,10 +433,9 @@ static void MX_CAN_Init(void)
 }
 
 /**
-  * @param None
   * @brief USART2 Initialization Function
+  * @param None
   * @retval None
-
   */
 static void MX_USART2_UART_Init(void)
 {
@@ -418,6 +464,7 @@ static void MX_USART2_UART_Init(void)
   /* USER CODE END USART2_Init 2 */
 
 }
+
 /**
   * @brief GPIO Initialization Function
   * @param None
@@ -450,7 +497,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 }
@@ -458,6 +505,100 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 /* USER CODE END 4 */
+
+/* USER CODE BEGIN Header_StartDefaultTask */
+/**
+  * @brief  Function implementing the defaultTask thread.
+  * @param  argument: Not used
+  * @retval None
+  */
+/* USER CODE END Header_StartDefaultTask */
+void StartDefaultTask(void *argument)
+{
+  /* USER CODE BEGIN 5 */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END 5 */
+}
+
+/* USER CODE BEGIN Header__HeartBeatTask */
+/**
+* @brief Function implementing the HeartBeatTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header__HeartBeatTask */
+void _HeartBeatTask(void *argument)
+{
+  /* USER CODE BEGIN _HeartBeatTask */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1000);
+    int pendingRequests = HAL_CAN_IsTxMessagePending(&hcan, TxMailbox);
+    if (pendingRequests == 0) {
+    	TxHeader.DLC = 1;
+    	TxHeader.StdId = 0x001;
+    	TxHeader.IDE = CAN_ID_STD;
+    	RxData[0] = 0xAA;
+    	if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, RxData, &TxMailbox) != HAL_OK) {
+            Error_Handler();
+        }
+    }
+  }
+  /* USER CODE END _HeartBeatTask */
+}
+
+/* USER CODE BEGIN Header__CANReceiveTask */
+/**
+* @brief Function implementing the CANReceiveTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header__CANReceiveTask */
+void _CANReceiveTask(void *argument)
+{
+  /* USER CODE BEGIN _CANReceiveTask */
+  /* Infinite loop */
+    while (1) {
+    	uint32_t error = HAL_CAN_GetError(&hcan);
+    	if(error != HAL_CAN_ERROR_NONE) {
+    		for(int i = 0; i < CAN_ERROR_MSG_MAPPING_LEN; i++){
+    			if(error & can_error_msg_mapping[i].error_id) {
+    				print("CAN Error is: ");
+    				println("%s", can_error_msg_mapping[i].human_readable_msg);
+    			}
+    		}
+    		HAL_CAN_ResetError(&hcan);
+    	}
+
+        uint32_t RxFifo = 0;
+        uint32_t fillLevel = HAL_CAN_GetRxFifoFillLevel(&hcan, RxFifo);
+        if (fillLevel > 0) {
+            HAL_CAN_GetRxMessage(&hcan, RxFifo, &RxHeader, RxData);
+            if(RxHeader.IDE == CAN_ID_STD){
+                println("RX: StdId=%x; DLC=%d", RxHeader.StdId, RxHeader.DLC);
+            }else{
+                println("RX: ExtId=%x; DLC=%d", RxHeader.ExtId, RxHeader.DLC);
+            }
+            println("RX: %x%x%x%x%x%x%x%x", RxData[0], RxData[1], RxData[2], RxData[3], RxData[4], RxData[5], RxData[6], RxData[7]);
+        }
+        osDelay(100);
+
+    }
+  /* USER CODE END _CANReceiveTask */
+}
+
+/* Callback01 function */
+void Callback01(void *argument)
+{
+  /* USER CODE BEGIN Callback01 */
+
+  /* USER CODE END Callback01 */
+}
 
 /**
   * @brief  This function is executed in case of error occurrence.
@@ -488,5 +629,4 @@ void assert_failed(uint8_t *file, uint32_t line)
      ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
   /* USER CODE END 6 */
 }
-
 #endif /* USE_FULL_ASSERT */
