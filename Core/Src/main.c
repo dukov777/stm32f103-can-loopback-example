@@ -142,7 +142,36 @@ void __print_service(const char *str) {
 ////		_print("\r\n");
 ////	}
 ////}
+#define CAN_ERROR_MSG_MAPPING_LEN 23
 
+struct {
+	uint32_t error_id;
+	const char* human_readable_msg;
+} can_error_msg_mapping[CAN_ERROR_MSG_MAPPING_LEN] = {
+{HAL_CAN_ERROR_NONE            , "No error                                            "},
+{HAL_CAN_ERROR_EWG             , "Protocol Error Warning                              "},
+{HAL_CAN_ERROR_EPV             , "Error Passive                                       "},
+{HAL_CAN_ERROR_BOF             , "Bus-off error                                       "},
+{HAL_CAN_ERROR_STF             , "Stuff error                                         "},
+{HAL_CAN_ERROR_FOR             , "Form error                                          "},
+{HAL_CAN_ERROR_ACK             , "Acknowledgment error                                "},
+{HAL_CAN_ERROR_BR              , "Bit recessive error                                 "},
+{HAL_CAN_ERROR_BD              , "Bit dominant error                                  "},
+{HAL_CAN_ERROR_CRC             , "CRC error                                           "},
+{HAL_CAN_ERROR_RX_FOV0         , "Rx FIFO0 overrun error                              "},
+{HAL_CAN_ERROR_RX_FOV1         , "Rx FIFO1 overrun error                              "},
+{HAL_CAN_ERROR_TX_ALST0        , "TxMailbox 0 transmit failure due to arbitration lost"},
+{HAL_CAN_ERROR_TX_TERR0        , "TxMailbox 0 transmit failure due to transmit error  "},
+{HAL_CAN_ERROR_TX_ALST1        , "TxMailbox 1 transmit failure due to arbitration lost"},
+{HAL_CAN_ERROR_TX_TERR1        , "TxMailbox 1 transmit failure due to transmit error  "},
+{HAL_CAN_ERROR_TX_ALST2        , "TxMailbox 2 transmit failure due to arbitration lost"},
+{HAL_CAN_ERROR_TX_TERR2        , "TxMailbox 2 transmit failure due to transmit error  "},
+{HAL_CAN_ERROR_TIMEOUT         , "Timeout error                                       "},
+{HAL_CAN_ERROR_NOT_INITIALIZED , "Peripheral not initialized                          "},
+{HAL_CAN_ERROR_NOT_READY       , "Peripheral not ready                                "},
+{HAL_CAN_ERROR_NOT_STARTED     , "Peripheral not started                              "},
+{HAL_CAN_ERROR_PARAM           ,"Parameter error                                      "}
+};
 
 
 /* USER CODE END 0 */
@@ -201,10 +230,15 @@ int main(void)
     /* USER CODE BEGIN 3 */
     	uint32_t error = HAL_CAN_GetError(&hcan);
     	if(error != HAL_CAN_ERROR_NONE) {
-    		char binary_string[34];
-
-    		itoa(error, binary_string, 2);
-    		println("CAN Error is: %s", binary_string);
+    		for(int i = 0; i < CAN_ERROR_MSG_MAPPING_LEN; i++){
+    			if(error & can_error_msg_mapping[i].error_id) {
+    				print("CAN Error is: ");
+    				println("%s", can_error_msg_mapping[i].human_readable_msg);
+    			}
+    		}
+//    		char binary_string[34];
+//    		itoa(error, binary_string, 2);
+//    		println("CAN Error is: %s", binary_string);
     	}
 
         uint32_t RxFifo = 0;
@@ -231,7 +265,7 @@ int main(void)
                 }
             }
         }
-        HAL_Delay(500);
+        HAL_Delay(800);
 
     }
   /* USER CODE END 3 */
